@@ -28,7 +28,9 @@ def authenticate_user(*args):
     raise NotImplementedError
 
 
-def server():
+def server(server_port, block_duration):
+    ''' Starts the server. '''
+
     raise NotImplementedError
 
 
