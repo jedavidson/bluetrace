@@ -32,7 +32,7 @@ def initiate_authentication(client):
 
 
 def get_password(client_username):
-    ''' gets a client's password from the credentials file. '''
+    ''' Retrieves a client's password from the credentials file. '''
 
     client_password = None
     with open('credentials.txt', 'r') as credentials:
