@@ -57,7 +57,32 @@ def authenticate(client):
 def logout(client):
     ''' Logs out this connected client. '''
 
-    client.send(bluetrace_protocol.CLIENT_LOGGING_OUT)
+    client.send(bluetrace_protocol.LOGOUT_CLIENT)
+
+
+def download_temp_id(client):
+    ''' Downloads a temp ID from the server for this client. '''
+
+    client.send(bluetrace_protocol.DOWNLOAD_TEMP_ID)
+    temp_id = client.recv(1024).decode()
+
+    print(f'Your temp ID is {temp_id}.')
+
+
+def process_command(client, command):
+    ''' Processes a command issued from the user and return the result. '''
+
+    if command == 'download_tempid':
+        download_temp_id(client)
+    elif command == 'upload_contact_log':
+        # TODO: Implement uploading of contact logs.
+        pass
+    elif command.startswith('beacon'):
+        # TODO: Implement P2P beaconing.
+        pass
+    else:
+        # If the command is unknown, give a generic response.
+        print('Invalid command.')
 
 
 def client(server_ip, server_port, client_port):
@@ -76,11 +101,10 @@ def client(server_ip, server_port, client_port):
             sys.exit(1)
 
         # Now that the client is authenticated, allow them to enter commands.
-        command = input('> ')
+        command = input('> ').lower()
         while command != 'logout':
-            # TODO: Process commands.
-
-            command = input('> ')
+            process_command(client,command)
+            command = input('> ').lower()
 
         # Initiate the logout phase.
         logout(client)
