@@ -1,4 +1,4 @@
-# bluetrace_protocol.py: A specification of constants used in BlueTrace
+# bluetrace_protocol.py: A specification of constants used in BlueTrace communications
 # by James Davidson for COMP3331, 20T2
 
 ''' Authentication '''
@@ -18,5 +18,14 @@ ACCOUNT_IS_BLOCKED = 'Your account is blocked due to multiple login failures. ' 
                      'Please try again later.'.encode()
 
 # The protocol message sent by the client when logging out.
-CLIENT_LOGGING_OUT = 'BT_AUTH_LOGOUT'.encode()
+LOGOUT_CLIENT = 'BT_AUTH_LOGOUT'.encode()
 
+''' Temp IDs '''
+
+# The protocol message sent when a client is downloading a temp ID.
+DOWNLOAD_TEMP_ID = 'BT_DOWN_TEMP_ID'.encode()
+
+''' Uploading contact logs '''
+
+# The protocol message sent when a client is uploading a contact log.
+UPLOAD_CONTACT_LOG = 'BT_UPLOAD_CONTACT_LOG'.encode()
