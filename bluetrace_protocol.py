@@ -1,6 +1,8 @@
 # bluetrace_protocol.py: A specification of constants used in BlueTrace
 # by James Davidson for COMP3331, 20T2
 
+''' Authentication '''
+
 # Protocol messages sent by the server when authenticating the client.
 INITIATING_AUTH = 'BT_AUTH_INIT'.encode()
 READY_TO_AUTH = 'BT_AUTH_READY'.encode()
@@ -17,3 +19,4 @@ ACCOUNT_IS_BLOCKED = 'Your account is blocked due to multiple login failures. ' 
 
 # The protocol message sent by the client when logging out.
 CLIENT_LOGGING_OUT = 'BT_AUTH_LOGOUT'.encode()
+
