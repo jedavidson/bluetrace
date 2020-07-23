@@ -16,7 +16,7 @@ import bluetrace_protocol
 block_duration = 0
 
 # A mapping from blocked client names to their unblock times.
-block_map = {}
+blocked_users = {}
 
 ''' Helper functionality '''
 
@@ -29,6 +29,17 @@ def initiate_authentication(client):
     while response != bluetrace_protocol.READY_TO_AUTH:
         client.send(bluetrace_protocol.INITIATING_AUTH)
         response = client.recv(1024)
+
+
+def is_blocked(username):
+    ''' Determines if a user is blocked or not. '''
+
+    block_time = blocked_users.get(username, None)
+    if block_time is None or block_time <= int(time.time()):
+        blocked_users.pop(username, None)
+        return False
+
+    return True
 
 
 def get_password(client_username):
@@ -47,15 +58,30 @@ def get_password(client_username):
     return client_password
 
 
-def is_blocked(username):
-    ''' Determines if a user is blocked or not. '''
+def verify_password(client, username, password):
+    '''
+    Verifies the client's entered password, prompting them to re-enter it
+    as many times as is necessary.
+    
+    The number of attempts used by the client is returned, and they are cut
+    off from making further attempts after incorrectly guessing three times. 
+    '''
 
-    block_time = block_map.get(username, None)
-    if block_time is None or block_time <= int(time.time()):
-        block_map.pop(username, None)
-        return False
+    expected_password = get_password(username)
+    attempts = 1
+    while password != expected_password and attempts < 3:
+        client.send(bluetrace_protocol.INVALID_CREDENTIALS)
+        password = client.recv(1024).decode()
+        attempts += 1
 
-    return True
+    return attempts
+
+
+def block(client, username):
+    ''' Blocks a user for block_duration seconds. '''
+
+    blocked_users[username] = int(time.time()) + block_duration
+    client.send(bluetrace_protocol.ACCOUNT_NOW_BLOCKED)
 
 
 ''' Main functionality '''
@@ -82,26 +108,15 @@ def authenticate(client):
         client.send(bluetrace_protocol.ACCOUNT_IS_BLOCKED)
         return False
 
-    # Get the client's actual password, and keep prompting until the
-    # correct password is given.
-    expected_password = get_password(username)
-    attempts = 1
-    while password != expected_password and attempts < 3:
-        client.send(bluetrace_protocol.INVALID_CREDENTIALS)
-        password = client.recv(1024).decode()
-        attempts += 1
-
-    # If the user fails three times, block them for the time specified when
-    # the server was started.
+    # Verify the given password, and block them if they take too many attempts.
+    attempts = verify_password(client, username, password)
     if attempts == 3:
-        block_map[username] = int(time.time()) + block_duration
-        client.send(bluetrace_protocol.ACCOUNT_NOW_BLOCKED)
+        block(client, username)
         return False
 
     # Otherwise, send a success message and end authentication.
     client.send(bluetrace_protocol.AUTHENTICATION_SUCCESS)
     return True
-    
 
 
 def handle_connection(client, client_addr):
