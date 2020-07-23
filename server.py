@@ -18,6 +18,10 @@ block_duration = 0
 # A mapping from blocked client names to their unblock times.
 blocked_users = {}
 
+# Various thread locks to regulate concurrent resource access.
+blocked_users_lock = threading.Lock()
+credentials_lock = threading.Lock()
+
 ''' Helper functionality '''
 
 
@@ -34,26 +38,31 @@ def initiate_authentication(client):
 def is_blocked(username):
     ''' Determines if a user is blocked or not. '''
 
-    block_time = blocked_users.get(username, None)
-    if block_time is None or block_time <= int(time.time()):
-        blocked_users.pop(username, None)
-        return False
+    blocked = True
 
-    return True
+    with blocked_users_lock:
+        block_time = blocked_users.get(username, None)
+        if block_time is None or block_time <= int(time.time()):
+            blocked_users.pop(username, None)
+            blocked = False
+
+    return blocked
 
 
 def get_password(client_username):
     ''' Retrieves a client's password from the credentials file. '''
 
     client_password = None
-    with open('credentials.txt', 'r') as credentials:
-        line = credentials.readline().strip('\n')
-        while line and client_password is None:
-            username, password = line.split()
-            if username == client_username:
-                client_password = password
-            else:
-                line = credentials.readline().strip('\n')
+
+    with credentials_lock:
+        with open('credentials.txt', 'r') as credentials:
+            line = credentials.readline().strip('\n')
+            while line and client_password is None:
+                username, password = line.split()
+                if username == client_username:
+                    client_password = password
+                else:
+                    line = credentials.readline().strip('\n')
 
     return client_password
 
@@ -80,7 +89,9 @@ def verify_password(client, username, password):
 def block(client, username):
     ''' Blocks a user for block_duration seconds. '''
 
-    blocked_users[username] = int(time.time()) + block_duration
+    with blocked_users_lock:
+        blocked_users[username] = int(time.time()) + block_duration
+
     client.send(bluetrace_protocol.ACCOUNT_NOW_BLOCKED)
 
 
@@ -119,7 +130,7 @@ def authenticate(client):
     return True
 
 
-def handle_connection(client, client_addr):
+def handle_connection(client):
     ''' Handles an incoming connection. '''
 
     # Authenticate the incoming connection first.
@@ -139,9 +150,18 @@ def server(port):
         server.listen(1)
 
         while True:
-            client, client_addr = server.accept()
-            handle_connection(client, client_addr)
-            client.close()
+            client, _ = server.accept()
+
+            # Delegate new connections to a new thread. Each thread is run in
+            # a try/catch block so that thread exceptions are suppressed.
+            client_thread = threading.Thread(target=handle_connection,
+                                             args=(client,),
+                                             daemon=True)
+
+            try:
+                client_thread.start()
+            except:
+                pass
 
 
 if __name__ == '__main__':
