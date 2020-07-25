@@ -1,19 +1,34 @@
-# bluetrace.py: A module containing the entities in the BlueTrace protocol
+# bluetrace.py: A module for the BlueTrace protocol
 # by James Davidson for COMP3331, 20T2
 
-import sys
-import threading
-import time
+from threading import Thread, Lock
+from time import time
 
 from datetime import datetime, timedelta
 from random import choice
-from socket import *
 from string import digits
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 
 import bluetrace_protocol
 
+''' Common helper functions '''
 
-class BlueTraceServerThread(threading.Thread):
+
+def generate_timestamp(dt, offset=0):
+    '''
+    Returns a timestamp in the format DD/MM/YY HH:MM:SS for the given datetime
+    with a certain offset (in minutes).
+
+    If no offset is given, the offset is taken to be 0.
+    '''
+
+    return (dt + timedelta(minutes=offset)).strftime('%d/%m/%y %H:%M:%S')
+
+
+''' Classes '''
+
+
+class BlueTraceServerThread(Thread):
     ''' A thread running under a BlueTrace server. '''
 
     def __init__(self, server, client_socket):
@@ -24,18 +39,18 @@ class BlueTraceServerThread(threading.Thread):
         self._username = None
         self._temp_id = None
 
-    ''' Main methods and server thread entry point '''
+    ''' Helper server thread methods '''
 
     def _verify_password(self, username, password):
         '''
         Verifies the client's entered password, prompting them to re-enter it
         as many times as is necessary.
-        
+
         The number of attempts used by the client is returned, and they are cut
-        off from making further attempts after incorrectly guessing three times. 
+        off from making further attempts after incorrectly guessing three times.
         '''
 
-        expected_password = self._server._get_password(username)
+        expected_password = self._server.get_password(username)
         attempts = 1
         while password != expected_password and attempts < 3:
             self._socket.send(bluetrace_protocol.INVALID_CREDENTIALS)
@@ -43,6 +58,8 @@ class BlueTraceServerThread(threading.Thread):
             attempts += 1
 
         return attempts
+
+    ''' Main server thread methods and entry point '''
 
     def _authenticate(self):
         '''
@@ -65,14 +82,14 @@ class BlueTraceServerThread(threading.Thread):
         password = self._socket.recv(1024).decode()
 
         # If the client is blocked, tell them and end authentication.
-        if self._server._is_blocked(username):
+        if self._server.is_blocked(username):
             self._socket.send(bluetrace_protocol.ACCOUNT_IS_BLOCKED)
             return False
 
         # Verify the password, and block them if they take too many attempts.
         attempts = self._verify_password(username, password)
         if attempts == 3:
-            self._server._block(username)
+            self._server.block(username)
             self._socket.send(bluetrace_protocol.ACCOUNT_NOW_BLOCKED)
             return False
 
@@ -81,16 +98,38 @@ class BlueTraceServerThread(threading.Thread):
         self._socket.send(bluetrace_protocol.AUTHENTICATION_SUCCESS)
         return True
 
+    def _receive_contact_log(self):
+        ''' Receives a contact log from the user. '''
+
+        # Inform the client that we're ready to receive the contact log.
+        self._socket.send(bluetrace_protocol.READY_FOR_LOG_UPLOAD)
+
+        print(f'Received contact log from {self._username}')
+
+        # Read the log's lines into a list while there's lines left.
+        contact_log = []
+        response = self._socket.recv(bluetrace_protocol.LOG_ENTRY_SIZE)
+        while response != bluetrace_protocol.FINISHED_CONTACT_LOG:
+            line = response.decode()
+            contact_log.append(line)
+            temp_id, start_date, start_time, end_date, end_time = line.split()
+            start = f'{start_date} {start_time}'
+            end = f'{end_date} {end_time}'
+            print(f'{temp_id}, {start}, {end};')
+            response = self._socket.recv(bluetrace_protocol.LOG_ENTRY_SIZE)
+
+        # Pass the log to the server to check.
+        self._server.check_contact_log(contact_log)
+
     def _handle_request(self, request):
         ''' Handles a request issued by the client. '''
 
         if request == bluetrace_protocol.DOWNLOAD_TEMP_ID:
-            temp_id = self._server._generate_temp_id(self._username)
+            temp_id = self._server.generate_temp_id(self._username)
             self._temp_id = temp_id
             self._socket.send(temp_id.encode())
         elif request == bluetrace_protocol.UPLOAD_CONTACT_LOG:
-            # TODO: Handle uploading contact logs.
-            pass
+            self._receive_contact_log()
 
     def run(self):
         '''
@@ -109,6 +148,8 @@ class BlueTraceServerThread(threading.Thread):
             self._handle_request(request)
             request = self._socket.recv(1024)
 
+        print(f'User {self._username} has logged out.')
+
 
 class BlueTraceServer():
     ''' A server in the BlueTrace protocol. '''
@@ -119,84 +160,105 @@ class BlueTraceServer():
         self._server_socket = None
         self._blocked_users = {}
         self._resource_locks = {
-            'blocked_users': threading.Lock(),
-            'credentials': threading.Lock(),
-            'temp_ids': threading.Lock()
+            'blocked_users': Lock(),
+            'credentials': Lock(),
+            'temp_ids': Lock()
         }
 
-    ''' Getter and setter methods '''
+    ''' Helper server methods '''
 
-    # TODO.
-
-    ''' Helper methods '''
-
-    def _generate_timestamp(self, dt, offset=0):
-        '''
-        Returns a timestamp in the format DD/MM/YY HH:MM:SS for the given datetime
-        with a certain offset (in minutes).
-
-        If no offset is given, the offset is taken to be 0.
-        '''
-
-        return (dt + timedelta(minutes=offset)).strftime('%d/%m/%y %H:%M:%S')
-
-    ''' Main server methods and entry point '''
-
-    def _is_blocked(self, username):
-        ''' Determines if a user is blocked or not. '''
-
-        blocked = True
-
-        with self._resource_locks['blocked_users']:
-            block_time = self._blocked_users.get(username, None)
-            if block_time is None or block_time <= int(time.time()):
-                self._blocked_users.pop(username, None)
-                blocked = False
-
-        return blocked
-
-    def _block(self, username):
-        ''' Blocks a user for block_duration seconds. '''
-
-        with self._resource_locks['blocked_users']:
-            self._blocked_users[username] = int(time.time()) \
-                                          + self._block_duration
-
-    def _get_password(self, client_username):
+    def get_password(self, client_username):
         ''' Retrieves a user's password from the credentials file. '''
 
         client_password = None
 
         with self._resource_locks['credentials']:
             with open('credentials.txt', 'r') as credentials:
-                line = credentials.readline().strip('\n')
+                line = credentials.readline().strip()
                 while line and client_password is None:
                     username, password = line.split()
                     if username == client_username:
                         client_password = password
                     else:
-                        line = credentials.readline().strip('\n')
+                        line = credentials.readline().strip()
 
         return client_password
 
-    def _generate_temp_id(self, username):
+    def _get_username_from_temp_id(self, client_temp_id):
+        ''' Gets the usernamne associated with the given temp ID. '''
+
+        client_username = None
+
+        with self._resource_locks['temp_ids']:
+            with open('tempIDs.txt', 'r') as temp_ids:
+                line = temp_ids.readline()
+                while line and client_username is None:
+                    username, temp_id, *_ = line.split()
+                    if temp_id == client_temp_id:
+                        client_username = username
+                    else:
+                        line = temp_ids.readline()
+
+        return client_username
+
+    ''' Main server methods and entry point '''
+
+    def is_blocked(self, username):
+        ''' Determines if a user is blocked or not. '''
+
+        blocked = True
+
+        with self._resource_locks['blocked_users']:
+            block_time = self._blocked_users.get(username, None)
+            if block_time is None or block_time <= int(time()):
+                self._blocked_users.pop(username, None)
+                blocked = False
+
+        return blocked
+
+    def block(self, username):
+        ''' Blocks a user for block_duration seconds. '''
+
+        with self._resource_locks['blocked_users']:
+            self._blocked_users[username] = int(time()) \
+                                          + self._block_duration
+
+    def generate_temp_id(self, username):
         '''
         Returns a new temp ID for a user, valid for 15 minutes.
-        
+
         An appropriate entry in the temp IDs file is written, and if this file
         does not already exist beforehand, it will be created.
         '''
 
-        temp_id = ''.join(choice(digits) for _ in range(20))
+        temp_id = ''.join(choice(digits) \
+                          for _ in range(bluetrace_protocol.TEMP_ID_SIZE))
 
         with self._resource_locks['temp_ids']:
             with open('tempIDs.txt', 'a+') as temp_ids:
-                start = self._generate_timestamp(datetime.now())
-                end = self._generate_timestamp(datetime.now(), offset=15)
+                start = generate_timestamp(datetime.now())
+                end = generate_timestamp(datetime.now(),
+                                         offset=bluetrace_protocol.TEMP_ID_TTL)
                 temp_ids.write(f'{username} {temp_id} {start} {end}\n')
 
         print(f'Temp ID {temp_id} generated for {username}.')
         return temp_id
+
+    def check_contact_log(self, contact_log):
+        '''
+        Checks the contents of a received contact log, mapping the temp IDs
+        of the encounters back to their true usernames.
+
+        The processed contents are displayed on the server's end.
+        '''
+
+        print(f'Checking contact log')
+
+        for line in contact_log:
+            temp_id, start_date, start_time, *_ = line.split()
+            username = self._get_username_from_temp_id(temp_id)
+            encounter_time = ' '.join((start_date, start_time))
+            print(f'{username}, {encounter_time}, {temp_id};')
 
     def start(self):
         ''' Starts this BlueTrace server. '''
@@ -224,14 +286,15 @@ class BlueTraceClient():
         self._client_socket = None
         self._username = None
         self._temp_id = None
+        self._contact_log_lock = Lock()
 
     ''' Helper client methods '''
 
-    def _verify_password(self, username):
+    def _verify_password(self):
         '''
         Verifies a user's entered password with the server until the server
         provides a definitive response.
-        
+
         The definitive response given is returned.
         '''
 
@@ -249,14 +312,6 @@ class BlueTraceClient():
         return response
 
     ''' Main client methods and entry point '''
-
-    def _download_temp_id(self):
-        ''' Downloads a temp ID from the server for this client. '''
-
-        self._client_socket.send(bluetrace_protocol.DOWNLOAD_TEMP_ID)
-        self._temp_id = self._client_socket.recv(1024).decode()
-
-        print(f'Your temp ID is {self._temp_id}.')
 
     def _authenticate(self):
         '''
@@ -283,7 +338,7 @@ class BlueTraceClient():
 
         # Relay whatever the server sent back to the user after verification,
         # and update any internal client state upon success.
-        response = self._verify_password(username)
+        response = self._verify_password()
         print(response.decode())
         if response == bluetrace_protocol.AUTHENTICATION_SUCCESS:
             self._username = username
@@ -297,14 +352,48 @@ class BlueTraceClient():
         self._username = None
         self._temp_id = None
 
+    def _download_temp_id(self):
+        ''' Downloads a temp ID from the server for this client. '''
+
+        self._client_socket.send(bluetrace_protocol.DOWNLOAD_TEMP_ID)
+        self._temp_id = self._client_socket \
+                            .recv(bluetrace_protocol.TEMP_ID_SIZE) \
+                            .decode()
+
+        print(f'Your temp ID is {self._temp_id}.')
+
+    def _upload_contact_log(self):
+        ''' Uploads the client's contact log to the server. '''
+
+        # Inform the server we're about to start sending the contact log,
+        # then wait until they're ready to start receiving.
+        self._client_socket.send(bluetrace_protocol.UPLOAD_CONTACT_LOG)
+
+        response = self._client_socket.recv(1024)
+        while response != bluetrace_protocol.READY_FOR_LOG_UPLOAD:
+            response = self._client_socket.recv(1024)
+
+        # Send the contact log line-by-line.
+        with self._contact_log_lock:
+            with open(f'{self._username}-contactlog.txt', 'r') as contact_log:
+                for line in contact_log:
+                    line = line.strip()
+                    temp_id, start_date, start_time, end_date, end_time = line.split()
+                    start = f'{start_date} {start_time}'
+                    end = f'{end_date} {end_time}'
+                    print(f'{temp_id}, {start}, {end};')
+                    self._client_socket.send(line.encode())
+
+            # Inform the server that the client has finished sending the log.
+            self._client_socket.send(bluetrace_protocol.FINISHED_CONTACT_LOG)
+
     def _process_command(self, command):
         ''' Processes a command issued from the user and return the result. '''
 
         if command == 'download_tempid':
             self._download_temp_id()
         elif command == 'upload_contact_log':
-            # TODO: Implement uploading of contact logs.
-            pass
+            self._upload_contact_log()
         elif command.startswith('beacon'):
             # TODO: Implement P2P beaconing.
             pass
@@ -325,16 +414,14 @@ class BlueTraceClient():
             while response != bluetrace_protocol.INITIATING_AUTH:
                 response = client_socket.recv(1024)
 
-            if not self._authenticate():
-                sys.exit(1)
-
-            # Now that the client is authenticated, allow them to enter commands.
-            command = input('> ').lower()
-            while command != 'logout':
-                self._process_command(command)
+            if self._authenticate():
+                # Now that the client is authenticated, receive commands.
                 command = input('> ').lower()
+                while command != 'logout':
+                    self._process_command(command)
+                    command = input('> ').lower()
 
-            # Initiate the logout phase.
-            self._logout()
+                # Initiate the logout phase.
+                self._logout()
 
         self._client_socket = None
