@@ -22,10 +22,24 @@ LOGOUT_CLIENT = 'BT_AUTH_LOGOUT'.encode()
 
 ''' Temp IDs '''
 
+# The size of the temp ID, in bytes.
+TEMP_ID_SIZE = 20
+
+# The time-to-live (TTL) of a temp ID in minutes.
+TEMP_ID_TTL = 15
+
 # The protocol message sent when a client is downloading a temp ID.
 DOWNLOAD_TEMP_ID = 'BT_DOWN_TEMP_ID'.encode()
 
 ''' Uploading contact logs '''
 
-# The protocol message sent when a client is uploading a contact log.
+# The size of each contact log entry, in bytes.
+# [temp ID, 20] + [space, 1] + [start, 19] + [space, 1] + [expiry, 19]
+LOG_ENTRY_SIZE = 20 + 1 + 19 + 1 + 19
+
+# The protocol message sent when a client sends a contact log.
 UPLOAD_CONTACT_LOG = 'BT_UPLOAD_CONTACT_LOG'.encode()
+FINISHED_CONTACT_LOG = 'BT_FINISHED_CONTACT_LOG_UPLOAD'.encode()
+
+# The protocol message sent by the server after it is prepared to receive logs.
+READY_FOR_LOG_UPLOAD = 'BT_READY_FOR_CONTACT_LOG_UPLOAD'.encode()
