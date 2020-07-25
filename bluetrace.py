@@ -77,6 +77,7 @@ class BlueTraceServerThread(threading.Thread):
             return False
 
         # Otherwise, send a success message and end authentication.
+        self._username = username
         self._socket.send(bluetrace_protocol.AUTHENTICATION_SUCCESS)
         return True
 
@@ -192,7 +193,7 @@ class BlueTraceServer():
             with open('tempIDs.txt', 'a+') as temp_ids:
                 start = self._generate_timestamp(datetime.now())
                 end = self._generate_timestamp(datetime.now(), offset=15)
-                temp_ids.write(f'{username} {temp_id} {start} {end}')
+                temp_ids.write(f'{username} {temp_id} {start} {end}\n')
 
         print(f'Temp ID {temp_id} generated for {username}.')
         return temp_id
