@@ -6,7 +6,8 @@ from time import time
 from datetime import datetime, timedelta
 from random import choice
 from string import digits
-from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, \
+                   SO_REUSEADDR, SOCK_DGRAM
 
 import bluetrace_protocol
 
@@ -24,11 +25,11 @@ def generate_timestamp(dt, offset=0):
     return (dt + timedelta(minutes=offset)).strftime('%d/%m/%y %H:%M:%S')
 
 
-''' Classes '''
+''' Server classes '''
 
 
 class BlueTraceServerThread(Thread):
-    ''' A thread running under a BlueTrace server. '''
+    ''' A thread running on a BlueTrace server. '''
 
     def __init__(self, server, client_socket):
         super().__init__()
@@ -275,6 +276,59 @@ class BlueTraceServer():
                 client_thread.start()
 
 
+''' Client classes '''
+
+
+class BlueTraceClientCentralThread(Thread):
+    ''' A central client thread for peer-to-peer beaconing. '''
+
+    def __init__(self, client, port):
+        super().__init__()
+        self.daemon = True
+        self._client = client
+        self._port = port
+        self._socket = None
+
+    ''' Main central thread methods and entry point '''
+
+    def run(self):
+        '''
+        Runs this thread to handle receiving beacons from other peers.
+
+        This method overrides the threading.Thread superclass method.
+        '''
+
+        with socket(AF_INET, SOCK_DGRAM) as central_socket:
+            self._socket = central_socket
+            # TODO: Implement central socket functionality
+
+
+class BlueTraceClientPeripheralThread(Thread):
+    ''' A peripheral client thread for peer-to-peer beaconing. '''
+
+    def __init__(self, client, client_port, dest_ip, dest_port):
+        super().__init__()
+        self.daemon = True
+        self._client = client
+        self._port = client_port
+        self._dest_ip = dest_ip
+        self._dest_port = int(dest_port)
+        self._socket = None
+
+    ''' Main peripheral thread methods and entry point '''
+
+    def run(self):
+        '''
+        Runs this thread to handle sending beacons to peers.
+
+        This method overrides the threading.Thread superclass method.
+        '''
+
+        with socket(AF_INET, SOCK_DGRAM) as peripheral_socket:
+            self._socket = peripheral_socket
+            # TODO: Implement peripheral thread functionality
+
+
 class BlueTraceClient():
     ''' A client in the BlueTrace protocol. '''
 
@@ -283,9 +337,23 @@ class BlueTraceClient():
         self._server_port = server_port
         self._client_port = client_port
         self._client_socket = None
+        self._central_socket = None
+        self._peripheral_socket = None
         self._username = None
         self._temp_id = None
         self._contact_log_lock = Lock()
+
+    ''' Getter methods '''
+
+    def get_temp_id(self):
+        ''' Returns this client's temp ID object. '''
+
+        return self._temp_id
+
+    def get_contact_log_lock(self):
+        ''' Get the client's contact log mutex. '''
+
+        return self._contact_log_lock
 
     ''' Helper client methods '''
 
@@ -355,11 +423,15 @@ class BlueTraceClient():
         ''' Downloads a temp ID from the server for this client. '''
 
         self._client_socket.send(bluetrace_protocol.DOWNLOAD_TEMP_ID)
-        self._temp_id = self._client_socket \
+        temp_id = self._client_socket \
                             .recv(bluetrace_protocol.TEMP_ID_SIZE) \
                             .decode()
+        self._temp_id = {
+            'temp_id': temp_id,
+            'generated': int(time())
+        }
 
-        print(f'Your temp ID is {self._temp_id}.')
+        print(f'Your temp ID is {temp_id}.')
 
     def _upload_contact_log(self):
         ''' Uploads the client's contact log to the server. '''
@@ -386,6 +458,15 @@ class BlueTraceClient():
             # Inform the server that the client has finished sending the log.
             self._client_socket.send(bluetrace_protocol.FINISHED_CONTACT_LOG)
 
+    def _send_beacon(self, dest_ip, dest_port):
+        ''' Sends a beacon to another client at the specified IP and port. '''
+
+        # Open up a peripheral socket thread to send this beacon.
+        self._peripheral_socket = \
+            BlueTraceClientPeripheralThread(self, self._client_port,
+                                            dest_ip, dest_port)
+        self._peripheral_socket.start()
+
     def _process_command(self, command):
         ''' Processes a command issued from the user and return the result. '''
 
@@ -394,8 +475,8 @@ class BlueTraceClient():
         elif command == 'upload_contact_log':
             self._upload_contact_log()
         elif command.startswith('beacon'):
-            # TODO: Implement P2P beaconing.
-            pass
+            _, dest_ip, dest_port = command.split()
+            self._send_beacon(dest_ip, dest_port)
         else:
             # If the command is unknown, give a generic response.
             print('Invalid command.')
@@ -414,7 +495,11 @@ class BlueTraceClient():
                 response = client_socket.recv(1024)
 
             if self._authenticate():
-                # Now that the client is authenticated, receive commands.
+                # Now that the client is authenticated, receive commands and
+                # start up a central beaconing thread for receiving beacons.
+                self._central_socket \
+                    = BlueTraceClientCentralThread(self, self._client_port)
+                self._central_socket.start()
                 command = input('> ').lower()
                 while command != 'logout':
                     self._process_command(command)
@@ -422,5 +507,3 @@ class BlueTraceClient():
 
                 # Initiate the logout phase.
                 self._logout()
-
-        self._client_socket = None
