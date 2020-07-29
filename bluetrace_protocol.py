@@ -43,3 +43,8 @@ FINISHED_CONTACT_LOG = 'BT_FINISHED_CONTACT_LOG_UPLOAD'.encode()
 
 # The protocol message sent by the server after it is prepared to receive logs.
 READY_FOR_LOG_UPLOAD = 'BT_READY_FOR_CONTACT_LOG_UPLOAD'.encode()
+
+''' Peer-to-peer beaconing '''
+
+# The BlueTrace protocol version number.
+PROTOCOL_VERSION = 1
