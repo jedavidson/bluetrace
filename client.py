@@ -21,4 +21,4 @@ if __name__ == '__main__':
         sys.exit(1)
 
     client = BlueTraceClient(server_ip, server_port, client_port)
-    client.run()
+    client.start()
