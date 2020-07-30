@@ -1,6 +1,11 @@
 # bluetrace_protocol.py: A specification of constants used in BlueTrace communications
 # by James Davidson for COMP3331, 20T2
 
+''' General '''
+
+# The format string of all timestamps used in BlueTrace record.
+TIMESTAMP_FORMAT = '%d/%m/%Y %H:%M:%S'
+
 ''' Authentication '''
 
 # Protocol messages sent by the server when authenticating the client.
