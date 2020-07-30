@@ -307,6 +307,7 @@ class BlueTraceClientCentralSubthread(Thread):
 
     def __init__(self, client, beacon):
         super().__init__()
+        self.daemon = True
         self._client = client
         self._beacon = beacon
 
