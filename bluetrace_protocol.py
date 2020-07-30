@@ -59,6 +59,9 @@ PROTOCOL_VERSION = 1
 #                                          + [space, 1] + [protocol version, 1]
 BEACON_SIZE = 20 + 1 + 19 + 1 + 19 + 1 + 1
 
+# The time-to-live of a beacon in minutes.
+BEACON_TTL = 3
+
 # The protocol message sent when a peripheral client is sending a beacon to
 # a central client.
 SENDING_BEACON = 'BT_SENDING_P2P_BEACON'.encode()
