@@ -53,3 +53,16 @@ READY_FOR_LOG_UPLOAD = 'BT_READY_FOR_CONTACT_LOG_UPLOAD'.encode()
 
 # The BlueTrace protocol version number.
 PROTOCOL_VERSION = 1
+
+# The length of each beacon packet in bytes.
+# [temp ID, 20] + [space, 1] + [start, 19] + [space, 1] + [expiry, 19]
+#                                          + [space, 1] + [protocol version, 1]
+BEACON_SIZE = 20 + 1 + 19 + 1 + 19 + 1 + 1
+
+# The protocol message sent when a peripheral client is sending a beacon to
+# a central client.
+SENDING_BEACON = 'BT_SENDING_P2P_BEACON'.encode()
+
+# The protocol message sent in response to a peripheral client's beacon request
+# by the central client, acknowledging they're ready to receive the beacon.
+READY_FOR_BEACON = 'BT_READY_FOR_P2P_BEACON'.encode()
