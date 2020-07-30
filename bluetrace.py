@@ -302,28 +302,77 @@ class BlueTraceServer():
 ''' Client classes '''
 
 
+class BlueTraceClientCentralSubthread(Thread):
+    ''' A central client subthread for handling one incoming beacon. '''
+
+    def __init__(self, client, beacon):
+        super().__init__()
+        self._client = client
+        self._beacon = beacon
+
+    ''' Main central subthread methods and entry point '''
+
+    def _validate_beacon(self):
+        ''' Checks the validity of this beacon. '''
+
+        _, start_time, end_time, _ = self._beacon.split()
+        start_time = convert_timestamp_to_epoch(start_time)
+        end_time = convert_timestamp_to_epoch(end_time)
+
+        current_time = generate_timestamp(datetime.now())
+        print(f'The current time is {current_time}.')
+
+        is_valid = start_time <= int(time()) <= end_time
+        print(f'The beacon is {"valid" if is_valid else "invalid"}')
+
+        return is_valid
+
+    def run(self):
+        '''
+        Runs this central subthread and processes the beacon.
+
+        This method overrides the threading.Thread superclass method.
+        '''
+
+        temp_id, start_time, end_time, _ = self._beacon.split()
+        print(f'Received beacon:\n{temp_id}, {start_time}, {end_time}')
+
+        if self._validate_beacon():
+            # TODO: Wait for TTL of beacon and remove line from the file
+            pass
+
+
 class BlueTraceClientCentralThread(Thread):
-    ''' A central client thread for peer-to-peer beaconing. '''
+    '''
+    A primary central thread for receiving beacons from peripheral clients.
+
+    Each incoming beacon is processed by a subthread of this central thread.
+    '''
 
     def __init__(self, client, port):
         super().__init__()
         self.daemon = True
         self._client = client
         self._port = port
-        self._socket = None
 
     ''' Main central thread methods and entry point '''
 
     def run(self):
         '''
-        Runs this thread to handle receiving beacons from other peers.
+        Runs the central socket thread to accept beacons.
 
         This method overrides the threading.Thread superclass method.
         '''
 
         with socket(AF_INET, SOCK_DGRAM) as central_socket:
-            self._socket = central_socket
-            # TODO: Implement central socket functionality
+            central_socket.bind(('localhost', self._port))
+
+            while True:
+                beacon, _ = central_socket.recvfrom(1024)
+                central_subthread = \
+                    BlueTraceClientCentralSubthread(self._client, beacon)
+                central_subthread.start()
+                central_subthread.join()
 
 
 class BlueTraceClientPeripheralThread(Thread):
@@ -512,8 +561,8 @@ class BlueTraceClient():
             # If the command is unknown, give a generic response.
             print('Invalid command.')
 
-    def run(self):
-        ''' Runs this BlueTrace client. '''
+    def start(self):
+        ''' Starts this BlueTrace client. '''
 
         with socket(AF_INET, SOCK_STREAM) as client_socket:
             self._client_socket = client_socket
