@@ -323,7 +323,7 @@ class BlueTraceClientCentralSubthread(Thread):
         print(f'The current time is {current_time}.')
 
         is_valid = start_time <= int(time()) <= end_time
-        print(f'The beacon is {"valid" if is_valid else "invalid"}')
+        print(f'The beacon is {"valid" if is_valid else "invalid"}.')
 
         return is_valid
 
