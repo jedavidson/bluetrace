@@ -55,12 +55,14 @@ READY_FOR_LOG_UPLOAD = 'BT_READY_FOR_CONTACT_LOG_UPLOAD'.encode()
 PROTOCOL_VERSION = 1
 
 # The length of each beacon packet in bytes.
-# [temp ID, 20] + [space, 1] + [start, 19] + [space, 1] + [expiry, 19]
-#                                          + [space, 1] + [protocol version, 1]
-BEACON_SIZE = 20 + 1 + 19 + 1 + 19 + 1 + 1
+# [temp ID, 20] + [comma space, 2] + [start, 19] + [comma space, 2]
+#                                                + [expiry, 19]
+#                                                + [comma space, 2]
+#                                                + [protocol version, 1]
+BEACON_SIZE = 20 + 2 + 19 + 2 + 19 + 2 + 1
 
-# The time-to-live of a beacon in minutes.
-BEACON_TTL = 3
+# The time-to-live of a beacon in seconds.
+BEACON_TTL = 3 * 60
 
 # The protocol message sent when a peripheral client is sending a beacon to
 # a central client.
