@@ -2,7 +2,7 @@
 # by James Davidson for COMP3331, 20T2
 
 from threading import Thread, Lock
-from time import time
+from time import time, sleep
 from datetime import datetime, timedelta
 from random import choice
 from string import digits
@@ -309,14 +309,16 @@ class BlueTraceClientCentralSubthread(Thread):
         super().__init__()
         self.daemon = True
         self._client = client
-        self._beacon = beacon
+        self._beacon = ', '.join(beacon.decode().split(', ')[:-1])
+        print()
+        self._contact_log = f'{self._client.get_username()}-contactlog.txt'
 
     ''' Main central subthread methods and entry point '''
 
     def _validate_beacon(self):
         ''' Checks the validity of this beacon. '''
 
-        _, start_time, end_time, _ = self._beacon.split()
+        _, start_time, end_time = self._beacon.split(', ')
         start_time = convert_timestamp_to_epoch(start_time)
         end_time = convert_timestamp_to_epoch(end_time)
 
@@ -328,6 +330,29 @@ class BlueTraceClientCentralSubthread(Thread):
 
         return is_valid
 
+    def _write_beacon(self):
+        ''' Writes a beacon to the central client's contact log. '''
+
+        with self._client.get_contact_log_lock():
+            with open(self._contact_log, 'a+') as contact_log:
+                contact_log.write(self._beacon + '\n')
+
+    def _schedule_beacon_removal(self):
+        '''
+        Ensures that this subthread's associated beacon is removed from the
+        client's contact log when it has expired.
+        '''
+
+        sleep(bluetrace_protocol.BEACON_TTL)
+
+        with self._client.get_contact_log_lock():
+            with open(self._contact_log, 'r') as contact_log:
+                lines = contact_log.readlines()
+
+            with open(self._contact_log, 'w') as contact_log:
+                if len(lines) > 1:
+                    contact_log.writelines(lines[1:])
+
     def run(self):
         '''
         Runs this central subthread and processes the beacon.
@@ -335,12 +360,12 @@ class BlueTraceClientCentralSubthread(Thread):
         This method overrides the threading.Thread superclass method.
         '''
 
-        temp_id, start_time, end_time, _ = self._beacon.split()
+        temp_id, start_time, end_time = self._beacon.split(', ')
         print(f'Received beacon:\n{temp_id}, {start_time}, {end_time}')
 
         if self._validate_beacon():
-            # TODO: Wait for TTL of beacon and remove line from the file
-            pass
+            self._write_beacon()
+            self._schedule_beacon_removal()
 
 
 class BlueTraceClientCentralThread(Thread):
@@ -369,11 +394,17 @@ class BlueTraceClientCentralThread(Thread):
             central_socket.bind(('localhost', self._port))
 
             while True:
-                beacon, _ = central_socket.recvfrom(1024)
+                request, peripheral_socket = central_socket.recvfrom(1024)
+                while request != bluetrace_protocol.SENDING_BEACON:
+                    request, _ = central_socket.recvfrom(1024)
+
+                central_socket.sendto(bluetrace_protocol.READY_FOR_BEACON,
+                                      peripheral_socket)
+
+                beacon, _ = central_socket.recvfrom(bluetrace_protocol.BEACON_SIZE)
                 central_subthread = \
                     BlueTraceClientCentralSubthread(self._client, beacon)
                 central_subthread.start()
-                central_subthread.join()
 
 
 class BlueTraceClientPeripheralThread(Thread):
@@ -382,7 +413,7 @@ class BlueTraceClientPeripheralThread(Thread):
     def __init__(self, beacon, dest_ip, dest_port):
         super().__init__()
         self.daemon = True
-        self._beacon = beacon
+        self._beacon = beacon.encode()
         self._central_client = (dest_ip, int(dest_port))
 
     ''' Main peripheral thread methods and entry point '''
@@ -427,6 +458,11 @@ class BlueTraceClient():
         ''' Get the client's contact log mutex. '''
 
         return self._contact_log_lock
+
+    def get_username(self):
+        ''' Gets the client's username. '''
+
+        return self._username
 
     ''' Helper client methods '''
 
@@ -540,8 +576,8 @@ class BlueTraceClient():
         # the central client will expect.
         temp_id, start_time, end_time = self._temp_id.values()
         print(f'{temp_id}, {start_time}, {end_time}')
-        beacon = f'{temp_id} {start_time} {end_time} ' + \
-                 f'{bluetrace_protocol.PROTOCOL_VERSION}'.encode()
+        beacon = f'{temp_id}, {start_time}, {end_time}, ' + \
+                 f'{bluetrace_protocol.PROTOCOL_VERSION}'
 
         # Pass the beacon and send it in another thread.
         peripheral_socket = \
