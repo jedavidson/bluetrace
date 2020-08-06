@@ -4,6 +4,7 @@
 from threading import Thread, Lock
 from time import time, sleep
 from datetime import datetime, timedelta
+from os import path
 from random import choice
 from string import digits
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, \
@@ -208,7 +209,7 @@ class BlueTraceServer():
         return client_password
 
     def _get_username_from_temp_id(self, client_temp_id):
-        ''' Gets the usernamne associated with the given temp ID. '''
+        ''' Gets the username associated with the given temp ID. '''
 
         client_username = None
 
@@ -558,7 +559,7 @@ class BlueTraceClient():
         # Send the contact log line-by-line.
         with self._contact_log_lock:
             with open(f'{self._username}-contactlog.txt', 'r+') as contact_log:
-                for line in contact_log:
+                for line in filter(None, contact_log):
                     line = line.strip()
                     temp_id, start_date, start_time, end_date, end_time = line.split()
                     start = f'{start_date} {start_time}'
@@ -612,6 +613,10 @@ class BlueTraceClient():
                 response = client_socket.recv(1024)
 
             if self._authenticate():
+                # Create a contact log for the user.
+                if not path.exists(f'{self._username}-contactlog.txt'):
+                    open(f'{self._username}-contactlog.txt', 'w').close()
+
                 # Now that the client is authenticated, receive commands and
                 # start up a central beaconing thread for receiving beacons.
                 self._central_socket \
