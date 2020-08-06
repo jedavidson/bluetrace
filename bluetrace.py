@@ -196,7 +196,7 @@ class BlueTraceServer():
         client_password = None
 
         with self._resource_locks['credentials']:
-            with open('credentials.txt', 'r') as credentials:
+            with open('credentials.txt', 'r+') as credentials:
                 line = credentials.readline().strip()
                 while line and client_password is None:
                     username, password = line.split()
@@ -213,7 +213,7 @@ class BlueTraceServer():
         client_username = None
 
         with self._resource_locks['temp_ids']:
-            with open('tempIDs.txt', 'r') as temp_ids:
+            with open('tempIDs.txt', 'r+') as temp_ids:
                 line = temp_ids.readline()
                 while line and client_username is None:
                     username, temp_id, *_ = line.split()
@@ -346,10 +346,10 @@ class BlueTraceClientCentralSubthread(Thread):
         sleep(bluetrace_protocol.BEACON_TTL)
 
         with self._client.get_contact_log_lock():
-            with open(self._contact_log, 'r') as contact_log:
+            with open(self._contact_log, 'r+') as contact_log:
                 lines = contact_log.readlines()
 
-            with open(self._contact_log, 'w') as contact_log:
+            with open(self._contact_log, 'w+') as contact_log:
                 if len(lines) > 1:
                     contact_log.writelines(lines[1:])
 
@@ -557,7 +557,7 @@ class BlueTraceClient():
 
         # Send the contact log line-by-line.
         with self._contact_log_lock:
-            with open(f'{self._username}-contactlog.txt', 'r') as contact_log:
+            with open(f'{self._username}-contactlog.txt', 'r+') as contact_log:
                 for line in contact_log:
                     line = line.strip()
                     temp_id, start_date, start_time, end_date, end_time = line.split()
