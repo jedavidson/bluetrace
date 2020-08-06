@@ -223,7 +223,8 @@ class BlueTraceServer():
                     else:
                         line = temp_ids.readline()
 
-        return client_username
+        # Return ??? if the user's temp ID is not known.
+        return client_username or '???'
 
     ''' Main server methods and entry point '''
 
@@ -286,6 +287,11 @@ class BlueTraceServer():
 
     def start(self):
         ''' Starts this BlueTrace server. '''
+
+        # Create a file to store temporary IDs if there isn't one already.
+        with self._resource_locks['temp_ids']:
+            if not path.exists('tempIDs.txt'):
+                open('tempIDs.txt', 'w').close()
 
         # Start a new welcoming socket for incoming connections.
         with socket(AF_INET, SOCK_STREAM) as server_socket:
@@ -614,8 +620,9 @@ class BlueTraceClient():
 
             if self._authenticate():
                 # Create a contact log for the user.
-                if not path.exists(f'{self._username}-contactlog.txt'):
-                    open(f'{self._username}-contactlog.txt', 'w').close()
+                with self._contact_log_lock:
+                    if not path.exists(f'{self._username}-contactlog.txt'):
+                        open(f'{self._username}-contactlog.txt', 'w').close()
 
                 # Now that the client is authenticated, receive commands and
                 # start up a central beaconing thread for receiving beacons.
