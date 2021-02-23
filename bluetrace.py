@@ -92,32 +92,32 @@ class BlueTraceServerThread(Thread):
         The result of the authentication process is returned.
         '''
 
-        # Initiate authentication with the connecting client.
+        # Initiate authentication with the connecting client
         self._socket.send(bluetrace_protocol.INITIATING_AUTH)
         response = self._socket.recv(1024)
         while response != bluetrace_protocol.READY_TO_AUTH:
             self._socket.send(bluetrace_protocol.INITIATING_AUTH)
             response = self._socket.recv(1024)
 
-        # After the client has acknowledged, ask for a username and password.
+        # After the client has acknowledged, ask for a username and password
         self._socket.send(bluetrace_protocol.EXPECTING_USERNAME)
         username = self._socket.recv(1024).decode()
         self._socket.send(bluetrace_protocol.EXPECTING_PASSWORD)
         password = self._socket.recv(1024).decode()
 
-        # If the client is blocked, tell them and end authentication.
+        # If the client is blocked, tell them and end authentication
         if self._server.is_blocked(username):
             self._socket.send(bluetrace_protocol.ACCOUNT_IS_BLOCKED)
             return False
 
-        # Verify the password, and block them if they take too many attempts.
+        # Verify the password, and block them if they take too many attempts
         attempts = self._verify_password(username, password)
         if attempts == 3:
             self._server.block(username)
             self._socket.send(bluetrace_protocol.ACCOUNT_NOW_BLOCKED)
             return False
 
-        # Otherwise, send a success message and end authentication.
+        # Otherwise, send a success message and end authentication
         self._username = username
         self._socket.send(bluetrace_protocol.AUTHENTICATION_SUCCESS)
         return True
@@ -125,12 +125,12 @@ class BlueTraceServerThread(Thread):
     def _receive_contact_log(self):
         ''' Receives a contact log from the user. '''
 
-        # Inform the client that we're ready to receive the contact log.
+        # Inform the client that we're ready to receive the contact log
         self._socket.send(bluetrace_protocol.READY_FOR_LOG_UPLOAD)
 
         print(f'Received contact log from {self._username}')
 
-        # Read the log's lines into a list while there's lines left.
+        # Read the log's lines into a list while there's lines left
         contact_log = []
         response = self._socket.recv(bluetrace_protocol.LOG_ENTRY_SIZE)
         while response != bluetrace_protocol.FINISHED_CONTACT_LOG:
@@ -162,11 +162,11 @@ class BlueTraceServerThread(Thread):
         This method overrides the threading.Thread superclass method.
         '''
 
-        # Authenticate the incoming connection first.
+        # Authenticate the incoming connection first
         if not self._authenticate():
             return
 
-        # Receive requests from the client until they try to log out.
+        # Receive requests from the client until they try to log out
         request = self._socket.recv(1024)
         while request != bluetrace_protocol.LOGOUT_CLIENT:
             self._handle_request(request)
@@ -223,7 +223,7 @@ class BlueTraceServer():
                     else:
                         line = temp_ids.readline()
 
-        # Return ??? if the user's temp ID is not known.
+        # Return ??? if the user's temp ID is not known
         return client_username or '???'
 
     ''' Main server methods and entry point '''
@@ -277,7 +277,7 @@ class BlueTraceServer():
         The processed contents are displayed on the server's end.
         '''
 
-        print(f'Checking contact log')
+        print('Checking contact log')
 
         for line in contact_log:
             temp_id, start_date, start_time, *_ = line.split()
@@ -288,12 +288,12 @@ class BlueTraceServer():
     def start(self):
         ''' Starts this BlueTrace server. '''
 
-        # Create a file to store temporary IDs if there isn't one already.
+        # Create a file to store temporary IDs if there isn't one already
         with self._resource_locks['temp_ids']:
             if not path.exists('tempIDs.txt'):
                 open('tempIDs.txt', 'w').close()
 
-        # Start a new welcoming socket for incoming connections.
+        # Start a new welcoming socket for incoming connections
         with socket(AF_INET, SOCK_STREAM) as server_socket:
             self._server_socket = server_socket
             server_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -434,7 +434,7 @@ class BlueTraceClientPeripheralThread(Thread):
 
         with socket(AF_INET, SOCK_DGRAM) as peripheral_socket:
             # Broadcast to the central client that we're sending a beacon,
-            # and wait for them to be ready.
+            # and wait for them to be ready
             peripheral_socket.sendto(bluetrace_protocol.SENDING_BEACON,
                                      self._central_client)
 
@@ -442,7 +442,7 @@ class BlueTraceClientPeripheralThread(Thread):
             while response != bluetrace_protocol.READY_FOR_BEACON:
                 response, _ = peripheral_socket.recvfrom(1024)
 
-            # Send the beacon.
+            # Send the beacon
             peripheral_socket.sendto(self._beacon, self._central_client)
 
 
@@ -485,7 +485,7 @@ class BlueTraceClient():
         self._client_socket.send(password.encode())
         response = self._client_socket.recv(1024)
 
-        # Keep prompting the user to enter their password as required.
+        # Keep prompting the user to enter their password as required
         while response == bluetrace_protocol.INVALID_CREDENTIALS:
             print(response.decode())
             password = input('> Password: ')
@@ -502,11 +502,11 @@ class BlueTraceClient():
         The result of the authentication process is returned.
         '''
 
-        # Acknowledge that the client is ready to begin authentication.
+        # Acknowledge that the client is ready to begin authentication
         self._client_socket.send(bluetrace_protocol.READY_TO_AUTH)
 
         # The server will first ask for the username, so prompt the user to
-        # enter their username and then send it.
+        # enter their username and then send it
         response = self._client_socket.recv(1024)
         while response != bluetrace_protocol.EXPECTING_USERNAME:
             response = self._client_socket.recv(1024)
@@ -514,13 +514,13 @@ class BlueTraceClient():
         username = input('> Username: ')
         self._client_socket.send(username.encode())
 
-        # The server will next ask for a password, so prompt the user again.
+        # The server will next ask for a password, so prompt the user again
         response = self._client_socket.recv(1024)
         while response != bluetrace_protocol.EXPECTING_PASSWORD:
             response = self._client_socket.recv(1024)
 
         # Relay whatever the server sent back to the user after verification,
-        # and update any internal client state upon success.
+        # and update any internal client state upon success
         response = self._verify_password()
         print(response.decode())
         if response == bluetrace_protocol.AUTHENTICATION_SUCCESS:
@@ -555,14 +555,14 @@ class BlueTraceClient():
         ''' Uploads the client's contact log to the server. '''
 
         # Inform the server we're about to start sending the contact log,
-        # then wait until they're ready to start receiving.
+        # then wait until they're ready to start receiving
         self._client_socket.send(bluetrace_protocol.UPLOAD_CONTACT_LOG)
 
         response = self._client_socket.recv(1024)
         while response != bluetrace_protocol.READY_FOR_LOG_UPLOAD:
             response = self._client_socket.recv(1024)
 
-        # Send the contact log line-by-line.
+        # Send the contact log line-by-line
         with self._contact_log_lock:
             with open(f'{self._username}-contactlog.txt', 'r+') as contact_log:
                 for line in filter(None, contact_log):
@@ -573,20 +573,20 @@ class BlueTraceClient():
                     print(f'{temp_id}, {start}, {end}')
                     self._client_socket.send(line.encode())
 
-            # Inform the server that the client has finished sending the log.
+            # Inform the server that the client has finished sending the log
             self._client_socket.send(bluetrace_protocol.FINISHED_CONTACT_LOG)
 
     def _send_beacon(self, dest_ip, dest_port):
         ''' Sends a beacon to another client at the specified IP and port. '''
 
         # Turn the client's internal temp ID representation into the form that
-        # the central client will expect.
+        # the central client will expect
         temp_id, start_time, end_time = self._temp_id.values()
         print(f'{temp_id}, {start_time}, {end_time}')
         beacon = f'{temp_id}, {start_time}, {end_time}, ' + \
                  f'{bluetrace_protocol.PROTOCOL_VERSION}'
 
-        # Pass the beacon and send it in another thread.
+        # Pass the beacon and send it in another thread
         peripheral_socket = \
             BlueTraceClientPeripheralThread(beacon, dest_ip, dest_port)
         peripheral_socket.start()
@@ -602,7 +602,7 @@ class BlueTraceClient():
             _, dest_ip, dest_port = command.split()
             self._send_beacon(dest_ip, dest_port)
         else:
-            # If the command is unknown, give a generic response.
+            # If the command is unknown, give a generic response
             print('Invalid command.')
 
     def start(self):
@@ -613,7 +613,7 @@ class BlueTraceClient():
             client_socket.connect((self._server_ip, self._server_port))
 
             # BlueTrace servers will initiate authentication upon connection,
-            # so the client should reciprocate.
+            # so the client should reciprocate
             response = client_socket.recv(1024)
             while response != bluetrace_protocol.INITIATING_AUTH:
                 response = client_socket.recv(1024)
@@ -625,7 +625,7 @@ class BlueTraceClient():
                         open(f'{self._username}-contactlog.txt', 'w').close()
 
                 # Now that the client is authenticated, receive commands and
-                # start up a central beaconing thread for receiving beacons.
+                # start up a central beaconing thread for receiving beacons
                 self._central_socket \
                     = BlueTraceClientCentralThread(self, self._client_port)
                 self._central_socket.start()
@@ -634,5 +634,5 @@ class BlueTraceClient():
                     self._process_command(command)
                     command = input('> ').lower()
 
-                # Initiate the logout phase.
+                # Initiate the logout phase
                 self._logout()

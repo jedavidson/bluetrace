@@ -1,7 +1,5 @@
-# server.py: Server program for the BlueTrace protocol simulator.
+# server.py: Server program for the BlueTrace protocol simulator
 # Usage: python3 server.py [server port] [block duration]
-# by James Davidson for COMP3331, 20T2
-# Note: This server was tested on CSE with Python 3.7.3.
 
 import sys
 from bluetrace import BlueTraceServer
